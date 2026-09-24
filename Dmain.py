@@ -22,7 +22,7 @@ class CombinedModel(nn.Module):
 
 
 config = Config()
-delta = config.delta
+
 
 x_min = config.x_min
 x_max = config.x_max
@@ -49,13 +49,13 @@ N = 7500
 
 
 # Subdomain1 points generation
-x1_min, x1_max, t1_min, t1_max = subdomain1(delta)
+x1_min, x1_max, t1_min, t1_max = subdomain1()
 
 x1 = x1_min + (x1_max - x1_min) * torch.rand(N,1)
 t1 = t1_min + (t1_max - t1_min) * torch.rand(N,1)
 
 # subdomain2 points generation
-x2_min, x2_max, t2_min, t2_max = subdomain2(delta)
+x2_min, x2_max, t2_min, t2_max = subdomain2()
 
 x2 = x2_min + (x2_max - x2_min) * torch.rand(N,1)
 t2 = t2_min + (t2_max - t2_min) * torch.rand(N,1)
@@ -63,14 +63,14 @@ t2 = t2_min + (t2_max - t2_min) * torch.rand(N,1)
 
 
 # subdomain5 points generation
-x3, t3 = subdomain3(delta, N)
+x3, t3 = subdomain3()
 
 # -------------------------------------------------------------------------------------------------
 # SUBDOMAIN LOSS FUNCTION FOR EACH SUBDOMAINS
 # -------------------------------------------------------------------------------------------------
 
 
-def Subdomain1Loss(x,t):
+def Subdomain1Loss():
 
     x = x1
     t = t1
@@ -121,7 +121,7 @@ def Subdomain1Loss(x,t):
     return loss1
 
 
-def Subdomain2Loss(x,t):
+def Subdomain2Loss():
 
     x = x2
     t = t2
@@ -171,43 +171,15 @@ def Subdomain2Loss(x,t):
 
 
 
-def Subdomain3Loss(x,t):
+def Subdomain3Loss():
 
     x = x3
     t = t3
-    t3_min = t_mid - delta
-    t3_max = t_mid + delta
-
-    x = x.reshape(-1, 1).requires_grad_(True)
-    t = t.reshape(-1, 1).requires_grad_(True)
-
-    
-    t_b_left = torch.linspace(t3_min, t3_max , steps=200, device= DEVICE).reshape(-1,1)
-    x_b_left = torch.zeros_like(t_b_left)
-    
-    t_b_right = torch.linspace(t3_min, t3_max , steps=200, device= DEVICE).reshape(-1,1)
-    x_b_right = torch.ones_like(t_b_right)
-    
-
-    x_b_left.requires_grad_(True)
-    t_b_left.requires_grad_(True)
-
-    x_b_right.requires_grad_(True)
-    t_b_right.requires_grad_(True)
-
-    
 
     x.requires_grad_(True)
     t.requires_grad_(True)
 
     u_pred3 = model3(x,t)
-
-
-    u_pred_right_b = model3(x_b_right, t_b_right)
-    u_pred_left_b = model3(x_b_left, t_b_left)
-
-    BoundaryLossLeft = nn.MSELoss()(u_pred_left_b, torch.zeros_like(u_pred_left_b))
-    BoundaryLossRight = nn.MSELoss()(u_pred_right_b, torch.zeros_like(u_pred_right_b))
 
     u_t = torch.autograd.grad(u_pred3, t, grad_outputs= torch.ones_like(u_pred3), create_graph= True)[0]
     u_x = torch.autograd.grad(u_pred3, x, grad_outputs= torch.ones_like(u_pred3), create_graph= True)[0]
@@ -217,7 +189,7 @@ def Subdomain3Loss(x,t):
 
     Pdeloss = nn.MSELoss()(residual, torch.zeros_like(residual))
 
-    loss5 = Pdeloss + BoundaryLossLeft + BoundaryLossRight
+    loss5 = Pdeloss 
 
     return loss5
 
@@ -230,21 +202,20 @@ optimizer3 = torch.optim.Adam(model3.parameters(), lr= config.learning_rate)
 
 for epoch in range(config.num_epochs):
     optimizer1.zero_grad()
-    optimizer2.zero_grad()
-    optimizer3.zero_grad()
-    
-
-    loss1 = Subdomain1Loss(x1,t1)
+    loss1 = Subdomain1Loss()
     loss1.backward()
     optimizer1.step()
-    loss2 = Subdomain2Loss(x2,t2)
+
+
+    optimizer2.zero_grad()
+    loss2 = Subdomain2Loss()
     loss2.backward()
     optimizer2.step()
     
 
     optimizer1.zero_grad()
     optimizer2.zero_grad()
-    loss3 = Subdomain3Loss(x3,t3)
+    loss3 = Subdomain3Loss()
     loss3.backward()
     optimizer3.step()
 
@@ -252,6 +223,9 @@ for epoch in range(config.num_epochs):
 
     if epoch % 500 == 0:
         print(f"Epoch {epoch:5d} | Loss1: {loss1.item():.6e} | Loss2: {loss2.item():.6e} | Loss3: {loss3.item():.6e} ")
+
+
+print("Training finished")
 
 
 torch.save(model1.state_dict(), "model1.pth")
