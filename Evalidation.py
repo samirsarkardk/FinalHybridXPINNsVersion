@@ -10,7 +10,6 @@ N = 5000
 t_value = torch.tensor(0.25)
 
 config = Config()
-delta = config.delta
 
 model1 = PINN1().to(DEVICE)
 model2 = PINN2().to(DEVICE)
@@ -39,36 +38,29 @@ t = t_min + (t_max - t_min) * torch.rand(N,1)
 
 t_mid.to(DEVICE), x.to(DEVICE), t.to(DEVICE), t_value.to(DEVICE)
 
-def final_solution(x, t, model1, model2, model3,
-                    t_mid, delta):
-
+def final_solution(x, t, model1, model2, model3, t_mid):
     x = x.reshape(-1, 1).to(DEVICE)
     t = t.reshape(-1, 1).to(DEVICE)
+    t_mid = torch.as_tensor(t_mid, device=DEVICE)
 
-    # Four corner subdomains
-    mask1 = (x <= x_max) & (t <= t_mid - delta)
-    mask2 = (x <= x_max) & (t >= t_mid + delta)
-    
-
-    # Central cross-shaped subdomain
-    mask3 = ~(mask1 | mask2 )
+    interface_mask = torch.isclose(t, t_mid, atol=1e-11)
+    mask1 = (t < t_mid) & (~interface_mask)
+    mask2 = (t > t_mid) & (~interface_mask)
 
     with torch.no_grad():
         u1 = model1(x, t)
         u2 = model2(x, t)
-        
-
-        # u5 = 0.25 * (u1 + u2 )
         u3 = model3(x, t)
+
+    u_interface = (u1 + u2 + u3) / 3
 
     u_final = (
         u1 * mask1.float()
         + u2 * mask2.float()
-        + u3 * mask3.float()
+        + u_interface * interface_mask.float()
     )
 
     return u_final
-
 
 def exact_solution(x, t):
     return torch.exp(-torch.pi**2 * t) * torch.sin(torch.pi * x)
@@ -94,8 +86,7 @@ u_pred1 = final_solution(
     model1,
     model2,
     model3,
-    t_mid,
-    delta
+    t_mid
 )
 
 # Exact solution at the same x and t points
@@ -112,7 +103,7 @@ print(f"Relative L2 Error Percentage: {relative_l2_error.item() * 100:.4f}%")
 
 
 u_pred = final_solution(
-    x, t, model1, model2, model3, t_mid, delta)
+    x, t, model1, model2, model3, t_mid)
 
 u_exact = exact_solution(x, t)
 
@@ -129,7 +120,7 @@ x_grid = torch.tensor(X.reshape(-1, 1), dtype=torch.float32, device=DEVICE)
 t_grid = torch.tensor(T.reshape(-1, 1), dtype=torch.float32, device=DEVICE)
 
 u_pred_grid = final_solution(
-    x_grid, t_grid, model1, model2, model3, t_mid, delta
+    x_grid, t_grid, model1, model2, model3, t_mid
 ).cpu().numpy().reshape(Nt, Nx)
 
 u_exact_grid = np.exp(-np.pi**2 * T) * np.sin(np.pi * X)
